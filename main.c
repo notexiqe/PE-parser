@@ -68,5 +68,36 @@ int main() {
         fprintf(stderr, "Error: sign \"PE\" not found;\n");
         return (-6);
     }
+
+    switch (*(WORD*)(((ULONG64)pMapImage) + *(LONG*)((ULONG64)pMapImage + 0x3c) + 0x04)) {
+        default: {
+            fprintf(stdout, "Info: CPU type - unknown or not added;\n");
+        }
+        case 0x200: {
+            fprintf(stdout, "Info: CPU type - Intel Itanium");
+        }
+        case 0x8664: {
+            fprintf(stdout, "Info: CPU type - AMD64\n");
+            break;
+        }
+    }
+
+    fprintf(stdout, "Info: Number of Object Table - %x\n", *(WORD*)(((ULONG64)pMapImage) + *(LONG*)((ULONG64)pMapImage + 0x3C) + 0x06));
+
+    fprintf(stdout, "Info: NT Header Size - %x\n", *(WORD*)(((ULONG64)pMapImage) + *(LONG*)((ULONG64)pMapImage + 0x3C) + 0x14));
+    switch (*(WORD*)(((ULONG64)pMapImage) + *(LONG*)((ULONG64)pMapImage + 0x3C) + 0x18)) {
+        case 0x10B: {
+            fprintf(stdout, "Info: x32\n");
+            break;
+        }
+        case 0x20B: {
+            fprintf(stdout, "Info: x64\n");
+            break;
+        }
+        default: {
+            fprintf(stderr, "Error: incorrect magic\n");
+            return (-7);
+        }
+    }
     return 0;
 }
