@@ -10,10 +10,11 @@ int main() {
     HANDLE hFile = NULL;
     HANDLE hFileMap = NULL;
     LPVOID pMapImage = NULL;
+    PIMAGE_NT_HEADERS pNT_HEADER = NULL;
     PIMAGE_DATA_DIRECTORY pDataDirectory = NULL;
-    WORD check_MZ = 0;
     DWORD* NumberOfRvaAndSize = NULL;
     LONG e_lfanew;
+    WORD check_MZ = 0;
 
     hFile = CreateFile(FILE_NAME, FILE_READ_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
@@ -73,7 +74,8 @@ int main() {
 
     //PIMAGE_NT_HEADERS64
     fprintf(stdout, "IMAGE_NT_HEADER\n");
-    if (*(DWORD*)(((ULONG64)pMapImage) + e_lfanew) != IMAGE_NT_SIGNATURE) {
+    pNT_HEADER = (PIMAGE_NT_HEADERS)((ULONG64)pMapImage + e_lfanew);
+    if (*(DWORD*)(pNT_HEADER) != IMAGE_NT_SIGNATURE){
         fprintf(stderr, "\tSignature: \"PE\" not found\n");
         UnmapViewOfFile(pMapImage);
         CloseHandle(hFileMap);
@@ -81,13 +83,12 @@ int main() {
         return (-7);
     }
     else {
-        fprintf(stdout, "\tSignature: \"%s\"\n", (char*)(((ULONG64)pMapImage) + e_lfanew));
+        fprintf(stdout, "\tSignature: \"%s\"\n", (PCHAR)(pNT_HEADER));
         
     }
 
     fprintf(stdout, "\n\tIMAGE_FILE_HEADER\n");
-
-    switch (*(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x04)) {
+    switch (*(WORD*)((ULONG64)pNT_HEADER + 0x04)) {
     default: {
         fprintf(stdout, "\t\tMachine: unknown or not added;\n");
         break;
@@ -106,18 +107,19 @@ int main() {
     }
     }
 
-    if (*(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x06) >= 0x60) {
+    if (*(WORD*)((ULONG64)pNT_HEADER + 0x06) >= 0x60) {
         fprintf(stderr, "\t\tNumberOfSections: incorrect value\n");
         return(-7);
     }
     else {
-        fprintf(stdout, "\t\tNumberOfSections: %04X\n", *(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x06));
+        fprintf(stdout, "\t\tNumberOfSections: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x06));
     }
 
-    fprintf(stdout, "\t\tSizeOfOptionalHeader: %04X\n", *(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x14));
-    fprintf(stdout, "\t\tCharacteristics: %04X\n", *(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x16));
+    fprintf(stdout, "\t\tSizeOfOptionalHeader: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x14));
+    fprintf(stdout, "\t\tCharacteristics: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x16));
+
     fprintf(stdout, "\n\tIMAGE_OPTIONAL_HEADER\n");
-    if (*(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x18) != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
+    if (*(WORD*)((ULONG64)pNT_HEADER + 0x18) != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
         fprintf(stderr, "\t\tMagic: Application is not 64-bit;\n");
         UnmapViewOfFile(pMapImage);
         CloseHandle(hFileMap);
@@ -128,7 +130,7 @@ int main() {
         fprintf(stdout, "\t\tMagic: x64\n");
     }
 
-    if (*(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x28) <= 0) {
+    if (*(DWORD*)((ULONG64)pNT_HEADER + 0x28) <= 0) {
         fprintf(stderr, "\t\tAddressOfEntryPoint: incorrect value\n");
         UnmapViewOfFile(pMapImage);
         CloseHandle(hFileMap);
@@ -136,25 +138,31 @@ int main() {
         return (-9);
     }
     else {
-        fprintf(stdout, "\t\tAddressOfEntryPoint: %08X\n", *(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x28));
+        fprintf(stdout, "\t\tAddressOfEntryPoint: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x28));
     }
 
-    fprintf(stdout, "\t\tImageBase: %016llX\n", *(ULONGLONG*)(((ULONG64)pMapImage) + e_lfanew + 0x30));
-    fprintf(stdout, "\t\tSectionAligment: %08X\n", *(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x38));
-    fprintf(stdout, "\t\tFileAligment: %08X\n", *(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x3C));
-    fprintf(stdout, "\t\tMajorSybsystemVersion: %04X\n", *(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x48));
-    fprintf(stdout, "\t\tSizeOfImage: %08X\n", *(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x50));
-    fprintf(stdout, "\t\tSizeOfHeaders: %08X\n", *(DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x54));
-    fprintf(stdout, "\t\tSubsystem: %04X\n", *(WORD*)(((ULONG64)pMapImage) + e_lfanew + 0x5C));
-    NumberOfRvaAndSize = (DWORD*)(((ULONG64)pMapImage) + e_lfanew + 0x84);
+    fprintf(stdout, "\t\tImageBase: %016llX\n", *(ULONGLONG*)((ULONG64)pNT_HEADER + 0x30));
+    fprintf(stdout, "\t\tSectionAligment: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x38));
+    fprintf(stdout, "\t\tFileAligment: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x3C));
+    fprintf(stdout, "\t\tMajorSybsystemVersion: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x48));
+    fprintf(stdout, "\t\tSizeOfImage: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x50));
+    fprintf(stdout, "\t\tSizeOfHeaders: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x54));
+    fprintf(stdout, "\t\tSubsystem: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x5C));
+    NumberOfRvaAndSize = (DWORD*)((ULONG64)pNT_HEADER + 0x84);
     fprintf(stdout, "\t\tNumberOfRvaAndSize: %08X\n", *NumberOfRvaAndSize);
-    fprintf(stdout, "\n\t\tIMAGE_DATA_DIRECTORY\n");
 
-    pDataDirectory = (PIMAGE_DATA_DIRECTORY)(((ULONG64)pMapImage) + e_lfanew + 0x88);
-    for (int i = 0; i < *NumberOfRvaAndSize; i++) {
-        fprintf(stdout, "\t\tDirectory %d\n", (i+1));
-        fprintf(stdout, "\t\t RVA:  %08X\n", pDataDirectory[i].VirtualAddress);
-        fprintf(stdout, "\t\t Size: %08X\n", pDataDirectory[i].Size);
+    fprintf(stdout, "\n\t\tIMAGE_DATA_DIRECTORY\n");
+    pDataDirectory = (PIMAGE_DATA_DIRECTORY)((ULONG64)pNT_HEADER + 0x88);
+    for (UINT i = 0; i < *NumberOfRvaAndSize; i++) {
+        if (pDataDirectory[i].VirtualAddress == 0) {
+            continue;
+        }
+        else {
+            fprintf(stdout, "\t\tDirectory %d\n", (i+1));
+            fprintf(stdout, "\t\t RVA:  %08X\n", pDataDirectory[i].VirtualAddress);
+            fprintf(stdout, "\t\t Size: %08X\n", pDataDirectory[i].Size);
+        }
     }
+
     return 0;
 }
