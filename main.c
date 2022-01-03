@@ -1,7 +1,5 @@
 #include <stdio.h>
 #include <Windows.h>
-#include <dbghelp.h>
-
 
 //const WCHAR* FILE_NAME = L"C:\\Program Files\\HxD\\HxD.exe";
 const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
@@ -171,9 +169,14 @@ int main() {
     }
 
     fprintf(stdout, "\n\t\tSECTION_HEADER\n");
-    pSectionHeader = (PIMAGE_SECTION_HEADER)(sizeof(*pNT_HEADER) + (DWORD)pNT_HEADER);
+    pSectionHeader = (PIMAGE_SECTION_HEADER)(&pDataDirectory[*NumberOfRvaAndSize]);
     for (UINT i = 0; i < *NumberOfSections; ++i) {
+        if (i == 0) {
             printf("\t\t%12s\n", pSectionHeader[i].Name);
+        }
+        else {
+            printf("\t\t%12s\n", pSectionHeader[i].Name);
+        }
     }
     return 0;
 }
