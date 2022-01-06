@@ -4,7 +4,7 @@
 //const WCHAR* FILE_NAME = L"C:\\Program Files\\HxD\\HxD.exe";
 const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
 
-#define RvaToVa(Base, Offset) ((PVOID)((ULONG64)Base + (ULONG)Offset))
+PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD, PIMAGE_NT_HEADERS);
 
 int main() {
     HANDLE hFile = NULL;
@@ -13,11 +13,16 @@ int main() {
     PIMAGE_NT_HEADERS pNT_HEADER = NULL;
     PIMAGE_DATA_DIRECTORY pDataDirectory = NULL;
     PIMAGE_SECTION_HEADER pSectionHeader = NULL;
+    //
+    PIMAGE_SECTION_HEADER pSectionImport = NULL;
+    PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = NULL;
+    //
     WORD* NumberOfSections = NULL;
     DWORD* NumberOfRvaAndSize = NULL;
     DWORD* ImportRVA = NULL;
     LONG e_lfanew;
     WORD check_MZ = 0;
+    INT startRVA = 0;
 
     hFile = CreateFile(FILE_NAME, FILE_READ_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
@@ -36,6 +41,7 @@ int main() {
         }
         else {
             fprintf(stderr, "\tError: File format is not PE\n");
+            CloseHandle(hFile);
             return (-3);
         }
     }
@@ -78,7 +84,7 @@ int main() {
     //PIMAGE_NT_HEADERS64
     fprintf(stdout, "IMAGE_NT_HEADER\n");
     pNT_HEADER = (PIMAGE_NT_HEADERS)((ULONG64)pMapImage + e_lfanew);
-    if (*(DWORD*)(pNT_HEADER) != IMAGE_NT_SIGNATURE){
+    if (*(DWORD*)(pNT_HEADER) != IMAGE_NT_SIGNATURE) {
         fprintf(stderr, "\tSignature: \"PE\" not found\n");
         UnmapViewOfFile(pMapImage);
         CloseHandle(hFileMap);
@@ -87,7 +93,7 @@ int main() {
     }
     else {
         fprintf(stdout, "\tSignature: \"%s\"\n", (PCHAR)(pNT_HEADER));
-        
+
     }
 
     fprintf(stdout, "\n\tFILE_HEADER\n");
@@ -162,7 +168,7 @@ int main() {
             continue;
         }
         else {
-            fprintf(stdout, "\t\tDirectory %d\n", (i+1));
+            fprintf(stdout, "\t\tDirectory %d\n", (i + 1));
             fprintf(stdout, "\t\t RVA:  %08X\n", pDataDirectory[i].VirtualAddress);
             fprintf(stdout, "\t\t Size: %08X\n", pDataDirectory[i].Size);
         }
@@ -170,13 +176,24 @@ int main() {
 
     fprintf(stdout, "\n\t\tSECTION_HEADER\n");
     pSectionHeader = (PIMAGE_SECTION_HEADER)(&pDataDirectory[*NumberOfRvaAndSize]);
+    fprintf(stdout, "\t\t_NAME_\tVirtualSize\tVirtualAddress \tRawSize \tRawAddress\n");
     for (UINT i = 0; i < *NumberOfSections; ++i) {
-        if (i == 0) {
-            printf("\t\t%12s\n", pSectionHeader[i].Name);
-        }
-        else {
-            printf("\t\t%12s\n", pSectionHeader[i].Name);
-        }
+        fprintf(stdout, "\t\t%-9s%08X\t %08X\t%08X\t%08X\n",
+            pSectionHeader[i].Name, pSectionHeader[i].Misc.VirtualSize, pSectionHeader[i].VirtualAddress, pSectionHeader[i].SizeOfRawData, pSectionHeader[i].PointerToRawData
+        );
     }
+
+    //EXPORT
+    if (!pDataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress) {
+        fprintf(stderr, "\n\t\tDIRECTORY_EXPORT not exist!\n");
+        goto IMPORT;
+    }
+    //IMPORT
+IMPORT:
+    if (!pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress) {
+        fprintf(stderr, "\n\t\tDIRECTORY_IMPORT not exist!\n");
+        return (-11);
+    }
+
     return 0;
 }
