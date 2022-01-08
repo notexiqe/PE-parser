@@ -4,7 +4,7 @@
 //const WCHAR* FILE_NAME = L"C:\\Program Files\\HxD\\HxD.exe";
 const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
 
-PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD, PIMAGE_NT_HEADERS);
+PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD RVA, PIMAGE_NT_HEADERS pNT_HEADER);
 
 int main() {
     HANDLE hFile = NULL;
@@ -14,8 +14,10 @@ int main() {
     PIMAGE_DATA_DIRECTORY pDataDirectory = NULL;
     PIMAGE_SECTION_HEADER pSectionHeader = NULL;
     //
-    PIMAGE_SECTION_HEADER pSectionImport = NULL;
-    PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = NULL;
+    DWORD* pExport_VA = NULL;
+    //
+    DWORD* pImport_VA = NULL;
+    PIMAGE_SECTION_HEADER pImportSection = NULL;
     //
     WORD* NumberOfSections = NULL;
     DWORD* NumberOfRvaAndSize = NULL;
@@ -183,17 +185,31 @@ int main() {
         );
     }
 
-    //EXPORT
-    if (!pDataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress) {
+//EXPORT
+    pExport_VA = &pDataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
+    if (!*pExport_VA) {
         fprintf(stderr, "\n\t\tDIRECTORY_EXPORT not exist!\n");
         goto IMPORT;
     }
-    //IMPORT
+
 IMPORT:
-    if (!pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress) {
+    pImport_VA = &pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
+    if (!*pImport_VA) {
         fprintf(stderr, "\n\t\tDIRECTORY_IMPORT not exist!\n");
         return (-11);
     }
 
+    return 0;
+}
+
+PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD RVA, PIMAGE_NT_HEADERS pNT_HEADER) {
+    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(pNT_HEADER);
+    for (UINT i = 0; i < pNT_HEADER->FileHeader.NumberOfSections; i++, section++)
+    {
+        if ((RVA >= section->VirtualAddress) && (RVA < (section->VirtualAddress + section->Misc.VirtualSize)))
+        {
+            return section;
+        }
+    }
     return 0;
 }
