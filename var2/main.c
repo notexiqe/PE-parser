@@ -1,6 +1,7 @@
 #include "utils.h"
 
-const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
+//const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
+const WCHAR* FILE_NAME = L"C:\\Program Files\\Sublime Text 3\\libcrypto-1_1-x64.dll";
 
 INT main()
 {
@@ -11,6 +12,7 @@ INT main()
     PIMAGE_NT_HEADERS pNtHeaders = NULL;
     PIMAGE_SECTION_HEADER pSectionHeader = NULL;
     //
+    PIMAGE_EXPORT_DIRECTORY pExportDesc = NULL;
     PIMAGE_IMPORT_DESCRIPTOR pImportDesc = NULL;
     //
     WORD checkMZ = 0;
@@ -83,12 +85,17 @@ INT main()
         goto EXIT;
     }
 
-EXPORT:
+//EXPORT
     if (!pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress || !pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size)
     {
         fprintf(stdout, "\n\tEXPORT_DIRECTORY is empty;\n");
         goto IMPORT;
     }
+    fprintf(stdout, "\n\tEXPORT_DIRECTORY\n");
+
+    pExportDesc = (PIMAGE_EXPORT_DIRECTORY)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_EXPORT, pNtHeaders));
+    ViewExport(pMapImageBase, pNtHeaders, pExportDesc);
+
 IMPORT:
     if (!pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress || !pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size)
     {
@@ -98,7 +105,7 @@ IMPORT:
     fprintf(stdout, "\n\tIMPORT_DIRECTORY\n");
 
     pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_IMPORT, pNtHeaders));
-    VievImport(pMapImageBase, pNtHeaders, pImportDesc);
+    ViewImport(pMapImageBase, pNtHeaders, pImportDesc);
 
 EXIT:
     UnmapViewOfFile(pMapImageBase);
