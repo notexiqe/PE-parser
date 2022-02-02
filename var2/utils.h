@@ -121,6 +121,17 @@ INT CheckAndPrintNtHeaders(PIMAGE_NT_HEADERS NtHeaders)
     fprintf(stdout, "\t SizeOfImage: %08X\n", NtHeaders->OptionalHeader.SizeOfImage);
     fprintf(stdout, "\t SizeOfHeaders: %08X\n", NtHeaders->OptionalHeader.SizeOfHeaders);
     fprintf(stdout, "\t Subsystem: %04X\n", NtHeaders->OptionalHeader.Subsystem);
+
+    fprintf(stdout, "\t DllCharacteristics: %04X\n", NtHeaders->OptionalHeader.DllCharacteristics);
+    if (NtHeaders->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_DYNAMIC_BASE)
+    {
+        fprintf(stderr, "\t\tDLL can be relocated at load time;\n");
+    }
+    if (NtHeaders->OptionalHeader.DllCharacteristics & IMAGE_DLLCHARACTERISTICS_NX_COMPAT)
+    {
+        fprintf(stderr, "\t\tImage is NX compatible;\n");
+    }
+
     fprintf(stdout, "\t NumberOfRvaAndSize: %08X\n", NtHeaders->OptionalHeader.NumberOfRvaAndSizes);
 
     fprintf(stdout, "\n\t DATA_DIRECTORIES\n");
@@ -205,7 +216,29 @@ ULONG DirRvaToRaw(INT DirIndex, PIMAGE_NT_HEADERS NtHeaders) {
     return 0;
 }
 
-VOID VievImport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders, PIMAGE_IMPORT_DESCRIPTOR ImportDescriptor)
+VOID ViewExport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders, PIMAGE_EXPORT_DIRECTORY ExportDescriptor)
+{
+    LPDWORD procAddr = (LPDWORD)RvaToVa(MapImageBase, RvaToRaw(ExportDescriptor->AddressOfFunctions, NtHeaders));
+    LPDWORD procNameRVA = (LPDWORD)RvaToVa(MapImageBase, RvaToRaw(ExportDescriptor->AddressOfNames, NtHeaders));
+    LPWORD procOrdinalNames = (LPWORD)RvaToVa(MapImageBase, RvaToRaw(ExportDescriptor->AddressOfNameOrdinals, NtHeaders));
+
+    PCHAR procName = NULL;
+
+    for (UINT i = 0; i < ExportDescriptor->NumberOfFunctions; i++)
+    {
+        procName = (PCHAR)RvaToVa(MapImageBase, RvaToRaw(procNameRVA[i], NtHeaders));
+        fprintf(stdout, "\t %s()\n", procName);
+        //fprintf(stdout, "\t [%06d] Addr [0x%08X] : Ordinal [0x%04d] : [%s()]\n",
+        //    i,
+        //    procAddr[i],
+        //    procOrdinalNames[i],
+        //    procName
+        //);
+    }
+    return;
+}
+
+VOID ViewImport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders, PIMAGE_IMPORT_DESCRIPTOR ImportDescriptor)
 {
     PCHAR moduleName = NULL;
     PCHAR moduleProcName = NULL;
@@ -227,9 +260,10 @@ VOID VievImport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders, PIMAGE_IMPORT_
                 moduleProcName = ImportByName->Name;
                 fprintf(stdout, "\t  %s()\n", moduleProcName);
             }
-                pThunk++;
+            pThunk++;
         }
 
         ImportDescriptor++;
     }
+    return;
 }
