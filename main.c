@@ -1,30 +1,39 @@
 #include <stdio.h>
 #include <Windows.h>
 
+#define ALIGN_DOWN(x, align)  (x & ~(align-1))
+#define ALIGN_UP(x, align)    ((x & (align-1)) ? ALIGN_DOWN(x,align) + align : x)
+#define RvaToVa(Base, offset) (PVOID)((ULONG64)Base + (ULONG)offset)
+
 //const WCHAR* FILE_NAME = L"C:\\Program Files\\HxD\\HxD.exe";
 const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
 
-PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD RVA, PIMAGE_NT_HEADERS pNT_HEADER);
+VOID HandleImport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders);
+
+ULONG
+RvaToRaw(
+    PIMAGE_NT_HEADERS NtHeaders,
+    PVOID ImageBase,
+    ULONG RVA
+);
+
+PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD rva, PIMAGE_NT_HEADERS pNTHeader);
 
 int main() {
     HANDLE hFile = NULL;
     HANDLE hFileMap = NULL;
-    LPVOID pMapImage = NULL;
+    LPVOID pMapImageBase = NULL;
     PIMAGE_NT_HEADERS pNT_HEADER = NULL;
-    PIMAGE_DATA_DIRECTORY pDataDirectory = NULL;
-    PIMAGE_SECTION_HEADER pSectionHeader = NULL;
+    PIMAGE_DATA_DIRECTORY pDataDirectories = NULL;
+    PIMAGE_SECTION_HEADER pSectionHeaders = NULL;
     //
-    DWORD* pExport_VA = NULL;
-    //
-    DWORD* pImport_VA = NULL;
-    PIMAGE_SECTION_HEADER pImportSection = NULL;
+    PIMAGE_EXPORT_DIRECTORY pExportDirectory = NULL;
+    HANDLE pImportDirectory = NULL;
     //
     WORD* NumberOfSections = NULL;
     DWORD* NumberOfRvaAndSize = NULL;
-    DWORD* ImportRVA = NULL;
-    LONG e_lfanew;
     WORD check_MZ = 0;
-    INT startRVA = 0;
+    LONG e_lfanew = 0;
 
     hFile = CreateFile(FILE_NAME, FILE_READ_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
     if (hFile == INVALID_HANDLE_VALUE) {
@@ -60,35 +69,34 @@ int main() {
         return (-4);
     }
 
-    pMapImage = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
-    if (pMapImage == NULL) {
+    pMapImageBase = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
+    if (pMapImageBase == NULL) {
         fprintf(stderr, "Error: cannot create view of file\n");
         CloseHandle(hFileMap);
         CloseHandle(hFile);
         return (-5);
     }
 
-    // _IMAGE_DOS_HEADER
-    if (*(BYTE*)((ULONG64)pMapImage + 0x18) < 0x40) {
+    if (*(BYTE*)((ULONG64)pMapImageBase + 0x18) < 0x40) {
         fprintf(stderr, "\tError: e_lfarlc less then 40h\n");
-        UnmapViewOfFile(pMapImage);
+        UnmapViewOfFile(pMapImageBase);
         CloseHandle(hFileMap);
         CloseHandle(hFile);
         return (-6);
     }
     else {
-        fprintf(stdout, "\te_lfarlc: %X\n", *(BYTE*)((ULONG64)pMapImage + 0x18));
+        fprintf(stdout, "\te_lfarlc: %X\n", *(BYTE*)((ULONG64)pMapImageBase + 0x18));
     }
 
-    e_lfanew = *(LONG*)((ULONG64)pMapImage + 0x3C);
+    e_lfanew = *(LONG*)((ULONG64)pMapImageBase + 0x3C);
     fprintf(stdout, "\te_lfanew: %X\n", e_lfanew);
 
     //PIMAGE_NT_HEADERS64
     fprintf(stdout, "IMAGE_NT_HEADER\n");
-    pNT_HEADER = (PIMAGE_NT_HEADERS)((ULONG64)pMapImage + e_lfanew);
+    pNT_HEADER = (PIMAGE_NT_HEADERS)((ULONG64)pMapImageBase + e_lfanew);
     if (*(DWORD*)(pNT_HEADER) != IMAGE_NT_SIGNATURE) {
         fprintf(stderr, "\tSignature: \"PE\" not found\n");
-        UnmapViewOfFile(pMapImage);
+        UnmapViewOfFile(pMapImageBase);
         CloseHandle(hFileMap);
         CloseHandle(hFile);
         return (-7);
@@ -133,18 +141,18 @@ int main() {
     fprintf(stdout, "\n\tOPTIONAL_HEADER\n");
     if (*(WORD*)((ULONG64)pNT_HEADER + 0x18) != IMAGE_NT_OPTIONAL_HDR64_MAGIC) {
         fprintf(stderr, "\t\tMagic: Application is not 64-bit;\n");
-        UnmapViewOfFile(pMapImage);
+        UnmapViewOfFile(pMapImageBase);
         CloseHandle(hFileMap);
         CloseHandle(hFile);
         return (-8);
     }
     else {
-        fprintf(stdout, "\t\tMagic: x64\n");
+        fprintf(stdout, "\t\tMagic: PE32+ (64-bit application)\n");
     }
 
     if (*(DWORD*)((ULONG64)pNT_HEADER + 0x28) <= 0) {
         fprintf(stderr, "\t\tAddressOfEntryPoint: incorrect value\n");
-        UnmapViewOfFile(pMapImage);
+        UnmapViewOfFile(pMapImageBase);
         CloseHandle(hFileMap);
         CloseHandle(hFile);
         return (-9);
@@ -153,7 +161,7 @@ int main() {
         fprintf(stdout, "\t\tAddressOfEntryPoint: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x28));
     }
 
-    fprintf(stdout, "\t\tImageBase: %016llX\n", *(ULONGLONG*)((ULONG64)pNT_HEADER + 0x30));
+    fprintf(stdout, "\t\tImageBase: %016llX\n", *(DWORDLONG*)((ULONG64)pNT_HEADER + 0x30));
     fprintf(stdout, "\t\tSectionAligment: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x38));
     fprintf(stdout, "\t\tFileAligment: %08X\n", *(DWORD*)((ULONG64)pNT_HEADER + 0x3C));
     fprintf(stdout, "\t\tMajorSybsystemVersion: %04X\n", *(WORD*)((ULONG64)pNT_HEADER + 0x48));
@@ -164,52 +172,105 @@ int main() {
     fprintf(stdout, "\t\tNumberOfRvaAndSize: %08X\n", *NumberOfRvaAndSize);
 
     fprintf(stdout, "\n\t\tDATA_DIRECTORY\n");
-    pDataDirectory = (PIMAGE_DATA_DIRECTORY)((ULONG64)pNT_HEADER + 0x88);
+    pDataDirectories = (PIMAGE_DATA_DIRECTORY)((ULONG64)pNT_HEADER + 0x88);
     for (UINT i = 0; i < *NumberOfRvaAndSize; i++) {
-        if (pDataDirectory[i].VirtualAddress == 0) {
+        if (pDataDirectories[i].VirtualAddress == 0) {
             continue;
         }
         else {
-            fprintf(stdout, "\t\tDirectory %d\n", (i + 1));
-            fprintf(stdout, "\t\t RVA:  %08X\n", pDataDirectory[i].VirtualAddress);
-            fprintf(stdout, "\t\t Size: %08X\n", pDataDirectory[i].Size);
+            fprintf(stdout, "\t\tDirectory %d\n", i);
+            fprintf(stdout, "\t\t offset:  %08X\n", pDataDirectories[i].VirtualAddress);
+            fprintf(stdout, "\t\t Size: %08X\n", pDataDirectories[i].Size);
         }
     }
 
-    fprintf(stdout, "\n\t\tSECTION_HEADER\n");
-    pSectionHeader = (PIMAGE_SECTION_HEADER)(&pDataDirectory[*NumberOfRvaAndSize]);
-    fprintf(stdout, "\t\t_NAME_\tVirtualSize\tVirtualAddress \tRawSize \tRawAddress\n");
+    fprintf(stdout, "\n\tSECTION_HEADER\n");
+    pSectionHeaders = (PIMAGE_SECTION_HEADER)(&pDataDirectories[*NumberOfRvaAndSize]);
+    fprintf(stdout, "\t_NAME_\tVirtualSize\tVirtualAddress \tRawSize \tRawAddress\n");
     for (UINT i = 0; i < *NumberOfSections; ++i) {
-        fprintf(stdout, "\t\t%-9s%08X\t %08X\t%08X\t%08X\n",
-            pSectionHeader[i].Name, pSectionHeader[i].Misc.VirtualSize, pSectionHeader[i].VirtualAddress, pSectionHeader[i].SizeOfRawData, pSectionHeader[i].PointerToRawData
+        fprintf(stdout, "\t%-9s%08X\t %08X\t%08X\t%08X\n",
+            pSectionHeaders[i].Name, pSectionHeaders[i].Misc.VirtualSize, pSectionHeaders[i].VirtualAddress, pSectionHeaders[i].SizeOfRawData, pSectionHeaders[i].PointerToRawData
         );
     }
 
 //EXPORT
-    pExport_VA = &pDataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress;
-    if (!*pExport_VA) {
-        fprintf(stderr, "\n\t\tDIRECTORY_EXPORT not exist!\n");
+    if (!pDataDirectories[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress || !pDataDirectories[IMAGE_DIRECTORY_ENTRY_EXPORT].Size) {
+        fprintf(stderr, "\n\tEXPORT_DIRECTORY is empty!\n");
         goto IMPORT;
     }
+    fprintf(stdout, "\n\tIMPORT_DIRECTORY\n");
 
 IMPORT:
-    pImport_VA = &pDataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress;
-    if (!*pImport_VA) {
-        fprintf(stderr, "\n\t\tDIRECTORY_IMPORT not exist!\n");
+    if (!pDataDirectories[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress || !pDataDirectories[IMAGE_DIRECTORY_ENTRY_IMPORT].Size) {
+        fprintf(stderr, "\n\tIMPORT_DIRECTORY is empty!\n");
         return (-11);
     }
 
+    fprintf(stdout, "\n\tIMPORT_DIRECTORY\n");
+    HandleImport(pMapImageBase, pNT_HEADER);
     return 0;
 }
 
-PIMAGE_SECTION_HEADER GetEnclosingSectionHeader(DWORD RVA, PIMAGE_NT_HEADERS pNT_HEADER) {
-    PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(pNT_HEADER);
-    for (UINT i = 0; i < pNT_HEADER->FileHeader.NumberOfSections; i++, section++)
+VOID HandleImport(LPVOID MapImageBase, PIMAGE_NT_HEADERS NtHeaders)
+{
+    PIMAGE_IMPORT_DESCRIPTOR pImportDescriptor = NULL;
+    PCHAR pName = NULL;
+    DWORD offset = 0;
+    PIMAGE_THUNK_DATA pNameThunk = NULL;
+    PIMAGE_THUNK_DATA pAddrThunk = NULL;
+    PIMAGE_IMPORT_BY_NAME pImportByName = NULL;
+    PCHAR pProcName = NULL;
+
+    offset = RvaToRaw(NtHeaders, MapImageBase, NtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress);
+    pImportDescriptor = (PIMAGE_IMPORT_DESCRIPTOR)((ULONG64)MapImageBase + offset);
+
+    while (pImportDescriptor->Name && pImportDescriptor->OriginalFirstThunk) 
     {
-        if ((RVA >= section->VirtualAddress) && (RVA < (section->VirtualAddress + section->Misc.VirtualSize)))
+        pName = (PCHAR)RvaToVa(MapImageBase, RvaToRaw(NtHeaders, MapImageBase, pImportDescriptor->Name));
+        printf("\t\t%s\n", pName);
+
+        pNameThunk = (PIMAGE_THUNK_DATA)RvaToVa(MapImageBase, RvaToRaw(NtHeaders, MapImageBase, pImportDescriptor->OriginalFirstThunk));
+        //pAddrThunk = (PIMAGE_THUNK_DATA)RvaToVa(MapImageBase, RvaToRaw(NtHeaders, MapImageBase, pImportDescriptor->FirstThunk));
+
+        while (pNameThunk->u1.AddressOfData)
         {
-            return section;
+            if (!(pNameThunk->u1.Ordinal & IMAGE_ORDINAL_FLAG))
+            {
+                pImportByName = (PIMAGE_IMPORT_BY_NAME)RvaToVa(MapImageBase, RvaToRaw(NtHeaders, MapImageBase, pNameThunk->u1.AddressOfData));
+                pProcName = pImportByName->Name;
+                printf("\t\t\t%s\n", pProcName);
+            }
+
+            pNameThunk++;
+            //pAddrThunk++;
+        }
+
+        pImportDescriptor++;
+    }
+}
+
+ULONG
+RvaToRaw(
+    PIMAGE_NT_HEADERS NtHeaders,
+    PVOID ImageBase,
+    ULONG offset
+)
+{
+    PIMAGE_SECTION_HEADER pSection;
+    ULONG i;
+
+    pSection = IMAGE_FIRST_SECTION(NtHeaders);
+
+    for (i = 0; i < NtHeaders->FileHeader.NumberOfSections; i++)
+    {
+        if (pSection[i].VirtualAddress <= offset)
+        {
+            if ((pSection[i].VirtualAddress + pSection[i].Misc.VirtualSize) > offset)
+            {
+                return offset - (pSection[i].VirtualAddress - pSection[i].PointerToRawData);
+            }
         }
     }
+
     return 0;
 }
