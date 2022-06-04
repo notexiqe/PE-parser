@@ -1,7 +1,7 @@
 #include "utils.h"
 
-//const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
-const WCHAR* FILE_NAME = L"C:\\Program Files\\Sublime Text 3\\libcrypto-1_1-x64.dll";
+const WCHAR* FILE_NAME = L"C:\\Windows\\System32\\notepad.exe";
+//const WCHAR* FILE_NAME = L"C:\\Program Files\\Sublime Text 3\\libcrypto-1_1-x64.dll";
 
 INT main()
 {
@@ -18,98 +18,110 @@ INT main()
     WORD checkMZ = 0;
 
     hFile = CreateFile(FILE_NAME, FILE_READ_DATA, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_READONLY, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) {
+    if (hFile != INVALID_HANDLE_VALUE)
+    {
+        fprintf(stdout, "\nDOS_HEADER\n");
+        SetFilePointer(hFile, 0, 0, FILE_BEGIN);
+        if (ReadFile(hFile, &checkMZ, 0x02, NULL, NULL))
+        {
+            if (checkMZ == IMAGE_DOS_SIGNATURE)
+            {
+                fprintf(stdout, "\te_magic:  MZ\n");
+
+                hFileMap = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
+                if (hFileMap != NULL) 
+                {
+                    pMapImageBase = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
+                    if (pMapImageBase != NULL)
+                    {
+
+                    }
+                    else
+                    {
+                        fprintf(stderr, "Error: cannot create view of file\n");
+                        CloseHandle(hFileMap);
+                        CloseHandle(hFile);
+                        return (-5);
+                    }
+                }
+                else
+                {
+                    fprintf(stderr, "Error: cannot map \"%ws\"", FILE_NAME);
+                    CloseHandle(hFile);
+                    return (-4);
+                }
+            }
+            else
+            {
+                fprintf(stderr, "\tError: File format is not PE\n");
+                CloseHandle(hFile);
+                return (-3);
+            }
+        }
+        else
+        {
+            fprintf(stderr, "Error: ReadFile() return FALSE;");
+            return (-2);
+        }
+    }
+    else
+    {
         fprintf(stderr, "Error: cannot open file!\n");
         return (-1);
     }
-    else {
-        fprintf(stdout, "Info: file \"%ws\" was open;\n", FILE_NAME);
-    }
 
-    fprintf(stdout, "\nDOS_HEADER\n");
-    SetFilePointer(hFile, 0, 0, FILE_BEGIN);
-    if (ReadFile(hFile, &checkMZ, 0x02, NULL, NULL)) {
-        if (checkMZ == IMAGE_DOS_SIGNATURE) {
-            fprintf(stdout, "\te_magic:  MZ\n");
-        }
-        else {
-            fprintf(stderr, "\tError: File format is not PE\n");
-            CloseHandle(hFile);
-            return (-3);
-        }
-    }
-    else {
-        fprintf(stderr, "Error: ReadFile() return FALSE;");
-        return (-2);
-    }
-
-
-    hFileMap = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, NULL);
-    if (hFileMap == NULL) {
-        fprintf(stderr, "Error: cannot map \"%ws\"", FILE_NAME);
-        CloseHandle(hFile);
-        return (-4);
-    }
-
-    pMapImageBase = MapViewOfFile(hFileMap, FILE_MAP_READ, 0, 0, 0);
-    if (pMapImageBase == NULL) {
-        fprintf(stderr, "Error: cannot create view of file\n");
-        CloseHandle(hFileMap);
-        CloseHandle(hFile);
-        return (-5);
-    }
-
-    // DOS_HEADER
-    pDosHeader = (PIMAGE_DOS_HEADER)pMapImageBase;
-    if ((CheckAndPrintDosHeader(pDosHeader)) != 0)
-    {
-        goto EXIT;
-    }
-
-    // NT_HEADERS
-    fprintf(stdout, "NT_HEADERS\n");
-
-    pNtHeaders = (PIMAGE_NT_HEADERS64)((ULONG64)pMapImageBase + pDosHeader->e_lfanew);
-    if ((CheckAndPrintNtHeaders(pNtHeaders)) != 0)
-    {
-        goto EXIT;
-    }
-    
-    // SECTION_HEADERS
-    fprintf(stdout, "\n\tSECTION_HEADER\n");
-
-    pSectionHeader = (PIMAGE_SECTION_HEADER)((ULONG64)pNtHeaders + sizeof(*pNtHeaders));
-    //pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
-    if ((CheckAndPrintSectionHeaders(pSectionHeader, pNtHeaders->FileHeader.NumberOfSections)) != 0)
-    {
-        goto EXIT;
-    }
-
-//EXPORT
-    if (!pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress || !pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size)
-    {
-        fprintf(stdout, "\n\tEXPORT_DIRECTORY is empty;\n");
-        goto IMPORT;
-    }
-    fprintf(stdout, "\n\tEXPORT_DIRECTORY\n");
-
-    pExportDesc = (PIMAGE_EXPORT_DIRECTORY)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_EXPORT, pNtHeaders));
-    ViewExport(pMapImageBase, pNtHeaders, pExportDesc);
-
-IMPORT:
-    if (!pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress || !pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size)
-    {
-        fprintf(stdout, "\n\tIMPORT_DIRECTORY is empty;\n");
-        goto IMPORT;
-    }
-    fprintf(stdout, "\n\tIMPORT_DIRECTORY\n");
-
-    pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_IMPORT, pNtHeaders));
-    ViewImport(pMapImageBase, pNtHeaders, pImportDesc);
-
-EXIT:
-    UnmapViewOfFile(pMapImageBase);
     CloseHandle(hFileMap);
     CloseHandle(hFile);
+
+    // DOS_HEADER
+
+    pDosHeader = (PIMAGE_DOS_HEADER)pMapImageBase;
+    if (CheckAndPrintDosHeader(pDosHeader))
+    {
+        // NT_HEADERS
+
+        pNtHeaders = (PIMAGE_NT_HEADERS64)((ULONG64)pMapImageBase + pDosHeader->e_lfanew);
+        if (CheckAndPrintNtHeaders(pNtHeaders))
+        {
+            // SECTION_HEADERS
+
+            pSectionHeader = (PIMAGE_SECTION_HEADER)((ULONG64)pNtHeaders + sizeof(*pNtHeaders));
+            //pSectionHeader = IMAGE_FIRST_SECTION(pNtHeaders);
+
+            CheckAndPrintSectionHeader(pSectionHeader, pNtHeaders->FileHeader.NumberOfSections);
+
+            // EXPORT
+            if (pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].VirtualAddress || pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT].Size)
+            {
+                pExportDesc = (PIMAGE_EXPORT_DIRECTORY)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_EXPORT, pNtHeaders));
+                ViewExport(pMapImageBase, pNtHeaders, pExportDesc);
+            }
+            else
+            {
+                fprintf(stdout, "\n\tEXPORT_DIRECTORY is empty;\n");
+            }
+
+            // IMPORT
+            if (pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].VirtualAddress || pNtHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT].Size)
+            {
+                pImportDesc = (PIMAGE_IMPORT_DESCRIPTOR)((ULONG64)pMapImageBase + DirRvaToRaw(IMAGE_DIRECTORY_ENTRY_IMPORT, pNtHeaders));
+                ViewImport(pMapImageBase, pNtHeaders, pImportDesc);
+            }
+            else
+            {
+                fprintf(stdout, "\n\tIMPORT_DIRECTORY is empty;\n");
+            }
+        }
+        else
+        {
+            fprintf(stderr, "CheckAndPrintNtHeaders return error;\n");
+        }
+    }
+    else 
+    {
+        fprintf(stderr, "CheckAndPrintDosHeader return error;\n");
+    }
+
+    UnmapViewOfFile(pMapImageBase);
     return 0;
 }
